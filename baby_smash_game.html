@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Toddler Smash!</title>
+    <style>
+        /* Base Setup */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Prevent scrolling */
+            font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded MT Bold', sans-serif;
+            background-color: #333;
+            touch-action: none; /* Prevent browser gestures */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Main Game Container */
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #2ecc71;
+            transition: background-color 0.4s ease;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        /* The Big Center Character */
+        #center-display {
+            font-size: 25vh; /* Very big */
+            filter: drop-shadow(0 10px 20px rgba(0,0,0,0.2));
+            z-index: 10;
+            pointer-events: none;
+            will-change: transform;
+        }
+
+        /* Animations for the character */
+        .anim-pop { animation: pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .anim-spin { animation: spin 0.8s ease-out; }
+        .anim-bounce { animation: bounce 0.8s ease-out; }
+        .anim-shake { animation: shake 0.6s ease-in-out; }
+
+        @keyframes pop { 0% { transform: scale(0); opacity: 0; } 70% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes spin { 0% { transform: rotate(-360deg) scale(0.5); } 100% { transform: rotate(0deg) scale(1); } }
+        @keyframes bounce { 0%, 20%, 50%, 80%, 100% {transform: translateY(0);} 40% {transform: translateY(-50px);} 60% {transform: translateY(-25px);} }
+        @keyframes shake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-20px) rotate(-10deg);} 75% {transform: translateX(20px) rotate(10deg);} }
+
+        /* Canvas for Fireworks/Particles */
+        #particles-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        /* Start Overlay */
+        #start-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .start-btn {
+            background: #ff4757;
+            border: none;
+            padding: 20px 40px;
+            font-size: 2rem;
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 10px 0 #c0392b;
+            transition: transform 0.1s;
+            margin-top: 30px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .start-btn:active {
+            transform: translateY(5px);
+            box-shadow: 0 5px 0 #c0392b;
+        }
+
+        h1 {
+            font-size: 3rem;
+            color: #f1c40f;
+            text-shadow: 4px 4px 0 #d35400;
+            margin-bottom: 10px;
+        }
+        
+        p { font-size: 1.2rem; color: #ddd; max-width: 600px; line-height: 1.5; }
+
+        /* Floating small emojis */
+        .floater {
+            position: absolute;
+            font-size: 3rem;
+            pointer-events: none;
+            animation: floatUp 2s ease-out forwards;
+            opacity: 1;
+            z-index: 8;
+        }
+
+        @keyframes floatUp {
+            0% { transform: translateY(0) scale(0.5) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(-150px) scale(1.5) rotate(45deg); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="particles-canvas"></canvas>
+        <div id="center-display">🐻</div>
+    </div>
+
+    <div id="start-overlay">
+        <h1>Toddler Smash!</h1>
+        <p>Turn up the volume! 🔊<br>Tap the screen or smash the keys to play.<br>Works on Phones, Tablets, and Keyboards.</p>
+        <button class="start-btn" id="start-btn">PLAY ▶</button>
+    </div>
+
+<script>
+    /**
+     * CONFIGURATION & ASSETS
+     */
+    const EMOJIS = [
+        // Animals
+        '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🦄','🐝','🐞','🦋','🐢','🐙','🐠','🐳',
+        // Nature/Weather
+        '🌸','🌻','🌼','🌈','☀️','⭐','🌙','☁️','⚡','❄️','🔥','💧',
+        // Food
+        '🍎','🍌','🍇','🍉','🍓','🍒','🍑','🍍','🥕','🌽','🥦','🍦','🍩','🍪','🎂','🍭','🍕','🍔',
+        // Vehicles
+        '🚗','🚕','🚌','🏎️','🚓','🚑','🚒','🚜','🚲','🚂','🚁','🚀','🛸','⛵'
+    ];
+
+    const COLORS = [
+        '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+        '#F7DC6F', '#BB8FCE', '#F1948A', '#82E0AA', '#85C1E9',
+        '#F0B27A', '#D7BDE2', '#A9DFBF', '#F9E79F', '#FF9FF3'
+    ];
+
+    const ANIMATIONS = ['anim-pop', 'anim-spin', 'anim-bounce', 'anim-shake'];
+
+    /**
+     * GAME STATE
+     */
+    let audioCtx;
+    let isStarted = false;
+    const container = document.getElementById('game-container');
+    const centerDisplay = document.getElementById('center-display');
+    const startOverlay = document.getElementById('start-overlay');
+    const startBtn = document.getElementById('start-btn');
+    
+    // Canvas setup
+    const canvas = document.getElementById('particles-canvas');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+    let width, height;
+
+    /**
+     * AUDIO SYSTEM (Simple Synthesizer)
+     * Uses Pentatonic scale so all random notes sound good together.
+     */
+    const NOTES = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25]; // C Major Pentatonic
+    
+    function initAudio() {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+    }
+
+    function playSound() {
+        if (!audioCtx) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        // Randomize sound type slightly
+        const types = ['sine', 'triangle'];
+        osc.type = types[Math.floor(Math.random() * types.length)];
+        
+        // Pick a random note
+        const note = NOTES[Math.floor(Math.random() * NOTES.length)];
+        
+        // Sometimes play a lower octave or higher octave
+        const multiplier = Math.random() > 0.8 ? 2 : (Math.random() > 0.8 ? 0.5 : 1);
+        osc.frequency.setValueAtTime(note * multiplier, audioCtx.currentTime);
+
+        // Envelope (Fade out)
+        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime); // Volume
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.6);
+    }
+
+    function playBoing() {
+        // A funny "Boing" sound for variation
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(300, audioCtx.currentTime + 0.3); // Pitch bend up
+
+        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+    }
+
+    /**
+     * VISUALS
+     */
+    function resizeCanvas() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+    }
+
+    function getRandomItem(arr) {
+        return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    function changeBackground() {
+        const color = getRandomItem(COLORS);
+        container.style.backgroundColor = color;
+    }
+
+    function updateCenterDisplay() {
+        // Change Emoji
+        centerDisplay.textContent = getRandomItem(EMOJIS);
+        
+        // Reset and Apply Random Animation
+        centerDisplay.className = '';
+        void centerDisplay.offsetWidth; // Trigger reflow to restart animation
+        centerDisplay.classList.add(getRandomItem(ANIMATIONS));
+    }
+
+    function spawnFloater(x, y) {
+        const el = document.createElement('div');
+        el.className = 'floater';
+        el.textContent = getRandomItem(EMOJIS);
+        el.style.left = x + 'px';
+        el.style.top = y + 'px';
+        
+        // Randomize drift
+        const drift = (Math.random() - 0.5) * 100;
+        el.style.transform = `translateX(${drift}px)`;
+        
+        container.appendChild(el);
+
+        // Clean up after animation
+        setTimeout(() => {
+            el.remove();
+        }, 2000);
+    }
+
+    /**
+     * PARTICLE SYSTEM
+     */
+    class Particle {
+        constructor(x, y, color) {
+            this.x = x;
+            this.y = y;
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 5 + 2;
+            this.vx = Math.cos(angle) * speed;
+            this.vy = Math.sin(angle) * speed;
+            this.life = 1.0;
+            this.decay = Math.random() * 0.03 + 0.01;
+            this.color = color;
+            this.size = Math.random() * 8 + 4;
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vy += 0.1; // Gravity
+            this.life -= this.decay;
+            this.size *= 0.95; // Shrink
+        }
+
+        draw(ctx) {
+            ctx.save();
+            ctx.globalAlpha = this.life;
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    function createExplosion(x, y) {
+        const color = '#FFF'; 
+        // Create 20 particles
+        for (let i = 0; i < 20; i++) {
+            particles.push(new Particle(x, y, getRandomItem(COLORS)));
+        }
+    }
+
+    function animateParticles() {
+        ctx.clearRect(0, 0, width, height);
+        
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.update();
+            p.draw(ctx);
+            if (p.life <= 0) {
+                particles.splice(i, 1);
+            }
+        }
+        requestAnimationFrame(animateParticles);
+    }
+
+    /**
+     * INTERACTION HANDLERS
+     */
+    function triggerAction(x, y) {
+        // 1. Audio
+        if (Math.random() > 0.8) playBoing();
+        else playSound();
+
+        // 2. Visuals
+        changeBackground();
+        updateCenterDisplay();
+        createExplosion(x, y);
+
+        // 3. Small floaters sometimes
+        if (Math.random() > 0.5) {
+            spawnFloater(x, y);
+        }
+    }
+
+    function handleInput(e) {
+        if (!isStarted) return;
+        
+        // Prevent default browser behavior (zoom, scroll)
+        // Note: We don't preventDefault on touchstart for buttons, so we check target
+        if (e.target.tagName !== 'BUTTON') {
+            // e.preventDefault(); 
+        }
+
+        let x = width / 2;
+        let y = height / 2;
+
+        if (e.type === 'touchstart' || e.type === 'mousedown') {
+            // Use touch/mouse coordinates
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            x = clientX;
+            y = clientY;
+        } else if (e.type === 'keydown') {
+            // Random position for keyboard smash
+            x = Math.random() * width;
+            y = Math.random() * height;
+            
+            // Allow escape to quit if needed, but mostly block keys
+            if(e.key === 'Escape') return; 
+        }
+
+        triggerAction(x, y);
+    }
+
+    /**
+     * INITIALIZATION
+     */
+    function startGame() {
+        isStarted = true;
+        initAudio();
+        startOverlay.style.opacity = '0';
+        setTimeout(() => startOverlay.style.display = 'none', 500);
+        
+        // Initial state
+        resizeCanvas();
+        animateParticles();
+        triggerAction(width/2, height/2);
+    }
+
+    // Event Listeners
+    window.addEventListener('resize', resizeCanvas);
+    
+    startBtn.addEventListener('click', startGame);
+
+    // Mouse
+    document.addEventListener('mousedown', handleInput);
+    
+    // Touch
+    document.addEventListener('touchstart', handleInput, { passive: false });
+    
+    // Keyboard
+    document.addEventListener('keydown', handleInput);
+
+    // Init canvas size
+    resizeCanvas();
+
+</script>
+</body>
+</html>
